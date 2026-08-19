@@ -8,6 +8,13 @@ PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 GUI="gui/$(id -u)"
 STORE="${WHOLE_STORE:-$HOME/.hermes/whole}"
 SCRIPT="$DIR/scripts/frontmost.py"
+# /usr/bin/python3 is an Xcode stub. With Xcode.app 26.6 unlicensed it
+# exits 69 from launchd. Pin the Command Line Tools interpreter.
+PY="/Library/Developer/CommandLineTools/usr/bin/python3"
+if [[ ! -x "$PY" ]]; then
+  echo "missing $PY — install CLT 27, do not point this at Xcode.app" >&2
+  exit 1
+fi
 
 mkdir -p "$HOME/Library/LaunchAgents" "$STORE"
 
@@ -18,9 +25,14 @@ cat > "$PLIST" <<EOF
 <dict>
   <key>Label</key>
   <string>${LABEL}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DEVELOPER_DIR</key>
+    <string>/Library/Developer/CommandLineTools</string>
+  </dict>
   <key>ProgramArguments</key>
   <array>
-    <string>/usr/bin/python3</string>
+    <string>${PY}</string>
     <string>${SCRIPT}</string>
     <string>--store</string>
     <string>${STORE}</string>
