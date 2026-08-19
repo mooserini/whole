@@ -1,4 +1,4 @@
-.PHONY: build run json once clean
+.PHONY: build run json once check clean
 
 # Xcode 27 beta owns the FoundationModels macros. Do not point this at
 # /Applications/Xcode.app (that's 26.6) and do not flip xcode-select.
@@ -18,6 +18,10 @@ json: build
 
 once:
 	/usr/bin/python3 scripts/frontmost.py --once --store $(HOME)/.hermes/whole
+
+check:
+	mkdir -p /tmp/whole-verify
+	/usr/bin/python3 scripts/frontmost.py --once --store /tmp/whole-verify
 
 clean:
 	rm -rf .build

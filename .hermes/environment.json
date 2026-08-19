@@ -8,14 +8,15 @@
       "make build"
     ],
     "test": [
+      "make check",
       "make run"
     ],
     "start": "",
     "port": null,
     "readinessPath": "",
     "evidence": [
-      "CLI: make build compiles whole-clerk; make run is a one-shot AFM standup, not a server"
+      "CLI: make build compiles whole-clerk; make check is one frontmost sample to /tmp; make run is a one-shot AFM standup, not a server"
     ]
   },
-  "updatedAt": "2026-08-19T22:02:25.222299+00:00"
+  "updatedAt": "2026-08-19T22:15:00+00:00"
 }
