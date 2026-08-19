@@ -16,12 +16,14 @@ run: build
 json: build
 	$(BIN) --trail $(FIXTURE) --json
 
+PY := /Library/Developer/CommandLineTools/usr/bin/python3
+
 once:
-	/usr/bin/python3 scripts/frontmost.py --once --store $(HOME)/.hermes/whole
+	$(PY) scripts/frontmost.py --once --store $(HOME)/.hermes/whole
 
 check:
 	mkdir -p /tmp/whole-verify
-	/usr/bin/python3 scripts/frontmost.py --once --store /tmp/whole-verify
+	$(PY) scripts/frontmost.py --once --store /tmp/whole-verify
 
 clean:
 	rm -rf .build
