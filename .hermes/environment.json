@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "recipe": {
+    "name": "WHOLE clerk CLI",
+    "kind": "make",
+    "bootstrap": [],
+    "build": [
+      "make build"
+    ],
+    "test": [
+      "make run"
+    ],
+    "start": "",
+    "port": null,
+    "readinessPath": "",
+    "evidence": [
+      "CLI: make build compiles whole-clerk; make run is a one-shot AFM standup, not a server"
+    ]
+  },
+  "updatedAt": "2026-08-19T22:02:25.222299+00:00"
+}
