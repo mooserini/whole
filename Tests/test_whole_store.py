@@ -35,6 +35,21 @@ class RedactionTests(unittest.TestCase):
         self.assertEqual(text, "token_count=42 session_id=abc keyboard shortcut")
         self.assertEqual(kinds, set())
 
+    def test_redacts_private_key_jwt_auth_header_and_database_password(self):
+        jwt = "eyJ" + "a" * 20 + "." + "b" * 20 + "." + "c" * 20
+        pem = "-----BEGIN PRIVATE KEY-----\nabc123\n-----END PRIVATE KEY-----"
+        value = f"{pem} Authorization: Bearer {jwt} postgres://admin:hunter2@db/app"
+        text, kinds = sanitize_text(value)
+        self.assertNotIn("abc123", text)
+        self.assertNotIn(jwt, text)
+        self.assertNotIn("hunter2", text)
+        self.assertTrue({"private_key", "auth_header", "password"}.issubset(kinds))
+
+    def test_redacts_luhn_card_and_secret_path(self):
+        text, kinds = sanitize_text("Saved 4242 4242 4242 4242 in /Users/tom/project/.env")
+        self.assertEqual(text, "Saved [CARD_NUMBER] in [SECRET_PATH]")
+        self.assertEqual(kinds, {"card_number", "secret_path"})
+
     def test_source_aware_messages_title_becomes_contact(self):
         event, redactions = redact_event({
             "ts": "2026-08-20T12:00:00-04:00",
@@ -84,6 +99,10 @@ class RedactionTests(unittest.TestCase):
     def test_fail_closed_on_non_string_field(self):
         with self.assertRaises(RedactionFailure):
             redact_event({"ts": "x", "source": "frontmost", "title": {"secret": "raw"}})
+
+    def test_fail_closed_on_timestamp_without_offset(self):
+        with self.assertRaises(RedactionFailure):
+            redact_event({"ts": "2026-08-20T12:00:00", "source": "frontmost", "title": "A"})
 
 
 class StoreTests(unittest.TestCase):
@@ -140,9 +159,9 @@ class StoreTests(unittest.TestCase):
         ]:
             self.store.ingest({"ts": ts, "source": "frontmost", "app": "app", "title": title})
         self.store.rebuild_segments(idle_threshold_seconds=1800)
-        rows = self.store.rows("SELECT state, duration_seconds FROM segments ORDER BY start_at")
-        self.assertEqual(rows[0], ("active", 300))
-        self.assertEqual(rows[1], ("unknown", 7200))
+        rows = self.store.rows("SELECT state, duration_seconds, app, title FROM segments ORDER BY start_at")
+        self.assertEqual(rows[0], ("active", 300, "app", "A"))
+        self.assertEqual(rows[1], ("unknown", 7200, None, None))
         self.assertEqual(self.store.report()["active_seconds_by_app"], {"app": 300})
 
     def test_import_jsonl_counts_malformed_without_partial_bad_write(self):
@@ -169,6 +188,22 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["title"], "Build Whole storage")
 
+    def test_chrome_titles_are_not_indexed_in_fts(self):
+        self.store.ingest({
+            "ts": "2026-08-20T12:00:00-04:00",
+            "source": "frontmost",
+            "app": "com.operasoftware.Opera",
+            "title": "Browser sidebar widget",
+        })
+        self.assertEqual(self.store.search("sidebar"), [])
+        self.assertEqual(len(self.store.search("Opera")), 1)
+
+    def test_utc_timestamp_orders_equal_instants_together(self):
+        self.store.ingest({"ts": "2026-08-20T12:00:00-04:00", "source": "frontmost", "app": "a", "title": "A"})
+        self.store.ingest({"ts": "2026-08-20T16:00:00+00:00", "source": "frontmost", "app": "b", "title": "B"})
+        values = [row[0] for row in self.store.rows("SELECT ts_utc FROM events ORDER BY event_id")]
+        self.assertEqual(values[0], values[1])
+
     def test_shadow_persistence_redacts_database_and_recovery_jsonl(self):
         trail = Path(self.tmp.name) / "recovery.jsonl"
         raw = {
@@ -185,6 +220,26 @@ class StoreTests(unittest.TestCase):
         self.assertIn("[API_KEY]", line)
         self.assertEqual(self.store.scalar("SELECT redaction_count FROM events"), 1)
 
+    def test_recovery_journal_survives_shadow_database_failure(self):
+        class BrokenStore:
+            def ingest(self, _):
+                raise sqlite3.OperationalError("database unavailable")
+
+        trail = Path(self.tmp.name) / "recovery.jsonl"
+        raw = {
+            "ts": "2026-08-20T12:00:00-04:00",
+            "source": "frontmost",
+            "app": "com.apple.Terminal",
+            "title": "OPENROUTER_API_KEY=" + "sk-" + "a" * 24,
+        }
+
+        stored = persist_event(trail, BrokenStore(), raw)
+
+        self.assertFalse(stored)
+        journal = trail.read_text(encoding="utf-8")
+        self.assertIn("[API_KEY]", journal)
+        self.assertNotIn("sk-" + "a" * 24, journal)
+
     def test_null_title_flicker_is_excluded_from_segments(self):
         for ts, title in [
             ("2026-08-20T12:00:00-04:00", "Document"),
@@ -198,6 +253,18 @@ class StoreTests(unittest.TestCase):
 
         titles = [row[0] for row in self.store.rows("SELECT title FROM segments ORDER BY start_at")]
         self.assertNotIn(None, titles)
+
+    def test_rapid_same_app_chrome_transitions_coalesce_for_segments(self):
+        for ts, title in [
+            ("2026-08-20T12:00:00-04:00", "Browser sidebar widget"),
+            ("2026-08-20T12:00:08-04:00", "Browser sidebar content view overlay window"),
+            ("2026-08-20T12:00:16-04:00", None),
+            ("2026-08-20T12:01:00-04:00", "Document"),
+        ]:
+            self.store.ingest({"ts": ts, "source": "frontmost", "app": "com.operasoftware.Opera", "title": title})
+        self.store.rebuild_segments()
+        self.assertEqual(self.store.scalar("SELECT count(*) FROM segments"), 1)
+        self.assertEqual(self.store.scalar("SELECT duration_seconds FROM segments"), 60)
 
 
 if __name__ == "__main__":

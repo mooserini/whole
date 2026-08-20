@@ -22,7 +22,9 @@ cd ~/Developer/whole
 ```
 
 Writes only when the focused app/title pair changes. Every observation passes
-through credential/PII redaction before durable storage:
+through credential/PII redaction before durable storage. The sanitized JSONL
+journal is written and `fsync`ed first; SQLite is a best-effort shadow. A shadow
+failure cannot cost the observation, and the next idempotent import repairs it:
 
 - `~/.hermes/whole/whole.db` — SQLite shadow store (WAL, FTS5, provenance)
 - `~/.hermes/whole/trail.jsonl` — sanitized recovery/import journal

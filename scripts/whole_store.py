@@ -14,7 +14,7 @@ import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
@@ -36,6 +36,12 @@ _PREFIX_RE = re.compile(
 )
 _EMAIL_RE = re.compile(r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])", re.I)
 _PHONE_RE = re.compile(r"(?<!\w)(?:\+?1[ .()-]*)?(?:\(?\d{3}\)?[ .-]*)\d{3}[ .-]*\d{4}(?!\w)")
+_PEM_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S)
+_JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
+_AUTH_HEADER_RE = re.compile(r"\b(?:Authorization|X-API-Key)\s*:\s*(?:Bearer\s+)?\S+", re.I)
+_DB_PASSWORD_RE = re.compile(r"\b((?:postgres(?:ql)?|mysql|mongodb|redis|amqp)://[^\s:/@]+:)(?!\[PASSWORD\])[^\s@]+(@)", re.I)
+_SECRET_PATH_RE = re.compile(r"(?:/[^\s/]+)*/(?:\.env(?:\.[A-Za-z0-9_-]+)?|id_rsa|credentials\.json|[^/\s]+\.pem)\b", re.I)
+_CARD_CANDIDATE_RE = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
 _ENV_RE = re.compile(
     r"\b([A-Z][A-Z0-9_]{0,64}(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH)[A-Z0-9_]*)\s*=\s*([^\s]+)"
 )
@@ -63,6 +69,22 @@ _SURFACES = (
     (("wants additional access",), "authorization_flow", "[AUTHORIZATION_FLOW]"),
 )
 _EVENT_TEXT_FIELDS = ("title", "detail", "session_id", "path")
+_CHROME_TITLE_TOKENS = (
+    "browser sidebar widget",
+    "browser sidebar content view overlay window",
+    "overlay window",
+    "tab preview",
+    "autofill pop-up",
+)
+
+
+def classify_title(app: Optional[str], title: Optional[str]) -> str:
+    if not title:
+        return "empty"
+    lowered = title.lower()
+    if any(token in lowered for token in _CHROME_TITLE_TOKENS):
+        return "chrome"
+    return "content"
 
 
 def _redact_urls(text: str) -> Tuple[str, Set[str]]:
@@ -92,10 +114,42 @@ def _redact_urls(text: str) -> Tuple[str, Set[str]]:
     return url_re.sub(replace, text), kinds
 
 
+def _luhn_valid(candidate: str) -> bool:
+    digits = [int(ch) for ch in candidate if ch.isdigit()]
+    if not 13 <= len(digits) <= 19:
+        return False
+    total = 0
+    parity = len(digits) % 2
+    for index, digit in enumerate(digits):
+        if index % 2 == parity:
+            digit *= 2
+            if digit > 9:
+                digit -= 9
+        total += digit
+    return total % 10 == 0
+
+
 def sanitize_text(value: str) -> Tuple[str, Set[str]]:
     if not isinstance(value, str):
         raise RedactionFailure("text field was not a string")
+    if len(value) > 4096:
+        raise RedactionFailure("text field exceeded 4096 characters")
     text, kinds = _redact_urls(value)
+    if _PEM_RE.search(text):
+        text = _PEM_RE.sub("[PRIVATE_KEY]", text)
+        kinds.add("private_key")
+    if _DB_PASSWORD_RE.search(text):
+        text = _DB_PASSWORD_RE.sub(r"\1[PASSWORD]\2", text)
+        kinds.add("password")
+    if _AUTH_HEADER_RE.search(text):
+        text = _AUTH_HEADER_RE.sub("[AUTH_HEADER]", text)
+        kinds.add("auth_header")
+    if _JWT_RE.search(text):
+        text = _JWT_RE.sub("[JWT]", text)
+        kinds.add("jwt")
+    if _SECRET_PATH_RE.search(text):
+        text = _SECRET_PATH_RE.sub("[SECRET_PATH]", text)
+        kinds.add("secret_path")
 
     def env_replace(match: re.Match) -> str:
         name = match.group(1)
@@ -121,6 +175,20 @@ def sanitize_text(value: str) -> Tuple[str, Set[str]]:
     if _PHONE_RE.search(text):
         text = _PHONE_RE.sub("[PHONE_NUMBER]", text)
         kinds.add("phone_number")
+
+    def card_replace(match: re.Match) -> str:
+        candidate = match.group(0)
+        if _luhn_valid(candidate):
+            kinds.add("card_number")
+            return "[CARD_NUMBER]"
+        return candidate
+
+    text = _CARD_CANDIDATE_RE.sub(card_replace, text)
+    if any(pattern.search(text) for pattern in (_PREFIX_RE, _PEM_RE, _JWT_RE, _AUTH_HEADER_RE, _DB_PASSWORD_RE, _EMAIL_RE, _PHONE_RE, _SECRET_PATH_RE)):
+        raise RedactionFailure("high-confidence sensitive text remained after sanitization")
+    for candidate in _CARD_CANDIDATE_RE.findall(text):
+        if _luhn_valid(candidate):
+            raise RedactionFailure("card number remained after sanitization")
     return text, kinds
 
 
@@ -171,7 +239,9 @@ def redact_event(raw: Dict[str, Any]) -> Tuple[Dict[str, Any], List[Dict[str, st
     if not isinstance(ts, str) or not ts.strip():
         raise RedactionFailure("event has no timestamp")
     try:
-        datetime.fromisoformat(ts)
+        parsed_ts = datetime.fromisoformat(ts)
+        if parsed_ts.tzinfo is None or parsed_ts.utcoffset() is None:
+            raise RedactionFailure("timestamp has no UTC offset")
     except ValueError as exc:
         raise RedactionFailure(f"invalid timestamp: {exc}")
     if not isinstance(source, str) or not source.strip():
@@ -191,9 +261,12 @@ CREATE TABLE IF NOT EXISTS sources (
 CREATE TABLE IF NOT EXISTS events (
     event_id INTEGER PRIMARY KEY,
     observed_at TEXT NOT NULL,
+    ts_utc INTEGER NOT NULL,
     source_id INTEGER NOT NULL REFERENCES sources(source_id),
     app TEXT,
     title TEXT,
+    title_class TEXT NOT NULL CHECK (title_class IN ('content','chrome','empty')),
+    title_provenance TEXT NOT NULL CHECK (title_provenance IN ('observed','redacted')),
     detail TEXT,
     session_id TEXT,
     path TEXT,
@@ -203,6 +276,7 @@ CREATE TABLE IF NOT EXISTS events (
     imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(observed_at);
+CREATE INDEX IF NOT EXISTS idx_events_utc ON events(ts_utc, event_id);
 CREATE INDEX IF NOT EXISTS idx_events_app_time ON events(app, observed_at);
 CREATE TABLE IF NOT EXISTS redactions (
     redaction_id INTEGER PRIMARY KEY,
@@ -219,6 +293,9 @@ CREATE TABLE IF NOT EXISTS segments (
     end_at TEXT NOT NULL,
     duration_seconds INTEGER NOT NULL CHECK (duration_seconds >= 0),
     state TEXT NOT NULL CHECK (state IN ('active','unknown')),
+    algo_version TEXT NOT NULL DEFAULT 'seg-v2',
+    provenance TEXT NOT NULL DEFAULT 'inferred',
+    crosses_midnight INTEGER NOT NULL DEFAULT 0 CHECK (crosses_midnight IN (0,1)),
     app TEXT,
     title TEXT
 );
@@ -230,6 +307,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
     detail,
     path
 );
+CREATE TRIGGER IF NOT EXISTS events_fts_delete AFTER DELETE ON events BEGIN
+    DELETE FROM events_fts WHERE event_id=old.event_id;
+END;
 """
 
 
@@ -244,7 +324,7 @@ class Store:
         except sqlite3.DatabaseError:
             self.conn.execute("PRAGMA journal_mode=DELETE")
         self.conn.executescript(_SCHEMA)
-        self.conn.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','1')")
+        self.conn.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('schema_version','2')")
         self.conn.commit()
 
     def close(self) -> None:
@@ -272,18 +352,21 @@ class Store:
             return int(existing[0])
         source = event["source"]
         provenance = "redacted" if redactions else "observed"
+        title_provenance = "redacted" if any(item["field"] == "title" for item in redactions) else "observed"
+        ts_utc = int(datetime.fromisoformat(event["ts"]).timestamp())
+        title_class = classify_title(event.get("app"), event.get("title"))
         with self.conn:
             self.conn.execute("INSERT OR IGNORE INTO sources(name) VALUES(?)", (source,))
             source_id = self.conn.execute("SELECT source_id FROM sources WHERE name=?", (source,)).fetchone()[0]
             cur = self.conn.execute(
                 """INSERT INTO events(
-                    observed_at,source_id,app,title,detail,session_id,path,
-                    provenance,event_hash,redaction_count
-                ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    observed_at,ts_utc,source_id,app,title,title_class,title_provenance,
+                    detail,session_id,path,provenance,event_hash,redaction_count
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    event["ts"], source_id, event.get("app"), event.get("title"),
-                    event.get("detail"), event.get("session_id"), event.get("path"),
-                    provenance, event_hash, len(redactions),
+                    event["ts"], ts_utc, source_id, event.get("app"), event.get("title"),
+                    title_class, title_provenance, event.get("detail"), event.get("session_id"),
+                    event.get("path"), provenance, event_hash, len(redactions),
                 ),
             )
             event_id = int(cur.lastrowid)
@@ -292,9 +375,10 @@ class Store:
                     "INSERT INTO redactions(event_id,field,kind,replacement) VALUES(?,?,?,?)",
                     (event_id, item["field"], item["kind"], item["replacement"]),
                 )
+            indexed_title = event.get("title") if title_class == "content" else ""
             self.conn.execute(
                 "INSERT INTO events_fts(event_id,app,title,detail,path) VALUES(?,?,?,?,?)",
-                (event_id, event.get("app") or "", event.get("title") or "", event.get("detail") or "", event.get("path") or ""),
+                (event_id, event.get("app") or "", indexed_title or "", event.get("detail") or "", event.get("path") or ""),
             )
         return event_id
 
@@ -320,7 +404,11 @@ class Store:
         return counts
 
     @staticmethod
-    def _effective_events(events: List[Tuple[Any, ...]], null_flicker_seconds: int) -> List[Tuple[Any, ...]]:
+    def _effective_events(
+        events: List[Tuple[Any, ...]],
+        null_flicker_seconds: int,
+        same_app_noise_seconds: int,
+    ) -> List[Tuple[Any, ...]]:
         filtered: List[Tuple[Any, ...]] = []
         for index, event in enumerate(events):
             if 0 < index < len(events) - 1 and event[3] is None:
@@ -328,16 +416,25 @@ class Store:
                 span = (datetime.fromisoformat(following[1]) - datetime.fromisoformat(previous[1])).total_seconds()
                 if previous[2] == event[2] == following[2] and previous[3] == following[3] and span <= null_flicker_seconds:
                     continue
+            if filtered and filtered[-1][2] == event[2]:
+                gap = (datetime.fromisoformat(event[1]) - datetime.fromisoformat(filtered[-1][1])).total_seconds()
+                if gap <= same_app_noise_seconds:
+                    continue
             if filtered and filtered[-1][2:] == event[2:]:
                 continue
             filtered.append(event)
         return filtered
 
-    def rebuild_segments(self, idle_threshold_seconds: int = 1800, null_flicker_seconds: int = 20) -> None:
+    def rebuild_segments(
+        self,
+        idle_threshold_seconds: int = 1800,
+        null_flicker_seconds: int = 20,
+        same_app_noise_seconds: int = 32,
+    ) -> None:
         events = self.conn.execute(
-            "SELECT event_id,observed_at,app,title FROM events ORDER BY observed_at,event_id"
+            "SELECT event_id,observed_at,app,title FROM events ORDER BY ts_utc,event_id"
         ).fetchall()
-        events = self._effective_events(events, null_flicker_seconds)
+        events = self._effective_events(events, null_flicker_seconds, same_app_noise_seconds)
         with self.conn:
             self.conn.execute("DELETE FROM segments")
             for current, following in zip(events, events[1:]):
@@ -345,10 +442,15 @@ class Store:
                 end = datetime.fromisoformat(following[1])
                 duration = max(0, int((end - start).total_seconds()))
                 state = "active" if duration <= idle_threshold_seconds else "unknown"
+                segment_app = current[2] if state == "active" else None
+                segment_title = current[3] if state == "active" else None
+                crosses_midnight = 1 if start.date() != end.date() else 0
                 self.conn.execute(
-                    """INSERT INTO segments(event_id,start_at,end_at,duration_seconds,state,app,title)
-                       VALUES(?,?,?,?,?,?,?)""",
-                    (current[0], current[1], following[1], duration, state, current[2], current[3]),
+                    """INSERT INTO segments(
+                           event_id,start_at,end_at,duration_seconds,state,
+                           algo_version,provenance,crosses_midnight,app,title
+                       ) VALUES(?,?,?,?,?,'seg-v2','inferred',?,?,?)""",
+                    (current[0], current[1], following[1], duration, state, crosses_midnight, segment_app, segment_title),
                 )
 
     def integrity_check(self) -> str:

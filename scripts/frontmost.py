@@ -131,15 +131,22 @@ def append_jsonl(path: Path, obj: dict) -> None:
         os.fsync(fh.fileno())
 
 
-def persist_event(path: Path, store: Store, obj: dict) -> None:
+def persist_event(path: Path, store: Store | None, obj: dict) -> bool:
     """Persist one observation through the pre-write privacy boundary.
 
-    SQLite records redaction provenance. The recovery JSONL receives the same
-    sanitized event, never the raw observation.
+    The sanitized recovery journal is the durable first write. SQLite is a
+    best-effort shadow projection; if it is unavailable, the journal remains
+    complete and an idempotent import repairs the database later.
     """
-    store.ingest(obj)
     sanitized, _ = redact_event(obj)
     append_jsonl(path, sanitized)
+    if store is None:
+        return False
+    try:
+        store.ingest(obj)
+    except Exception:
+        return False
+    return True
 
 
 def key_of(sample: dict[str, str]) -> tuple[str, str]:
@@ -161,19 +168,29 @@ def run_once(store: Path, db_path: Path | None = None) -> int:
         log(f"denied {sample.get('bundle') or sample.get('name')}")
         return 0
     ev = event_from(sample)
-    database = Store(db_path or store / "whole.db")
     try:
-        persist_event(store / "trail.jsonl", database, ev)
+        database = Store(db_path or store / "whole.db")
+    except Exception:
+        database = None
+        log("SQLite shadow unavailable; sanitized recovery journal remains authoritative")
+    try:
+        if not persist_event(store / "trail.jsonl", database, ev):
+            log("SQLite shadow write failed; sanitized recovery journal is intact")
         sanitized, _ = redact_event(ev)
         print(json.dumps(sanitized, ensure_ascii=False))
     finally:
-        database.close()
+        if database is not None:
+            database.close()
     return 0
 
 
 def run_loop(store: Path, interval: float, db_path: Path | None = None) -> int:
     trail = store / "trail.jsonl"
-    database = Store(db_path or store / "whole.db")
+    try:
+        database = Store(db_path or store / "whole.db")
+    except Exception:
+        database = None
+        log("SQLite shadow unavailable; sanitized recovery journal remains authoritative")
     last: tuple[str, str] | None = None
     misses = 0
     log(f"frontmost collector store={store} interval={interval}s (no screen, no OCR)")
@@ -193,7 +210,8 @@ def run_loop(store: Path, interval: float, db_path: Path | None = None) -> int:
             continue
         k = key_of(sample)
         if k != last:
-            persist_event(trail, database, event_from(sample))
+            if not persist_event(trail, database, event_from(sample)):
+                log("SQLite shadow write failed; sanitized recovery journal is intact")
             last = k
         time.sleep(interval)
 
