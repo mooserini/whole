@@ -17,6 +17,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from whole_store import Store, redact_event
+
 DEFAULT_STORE = Path.home() / ".hermes" / "whole"
 SKIP_APPS = {
     "com.apple.loginwindow",
@@ -129,6 +131,17 @@ def append_jsonl(path: Path, obj: dict) -> None:
         os.fsync(fh.fileno())
 
 
+def persist_event(path: Path, store: Store, obj: dict) -> None:
+    """Persist one observation through the pre-write privacy boundary.
+
+    SQLite records redaction provenance. The recovery JSONL receives the same
+    sanitized event, never the raw observation.
+    """
+    store.ingest(obj)
+    sanitized, _ = redact_event(obj)
+    append_jsonl(path, sanitized)
+
+
 def key_of(sample: dict[str, str]) -> tuple[str, str]:
     return (sample.get("bundle") or sample.get("name") or "", sample.get("title") or "")
 
@@ -138,7 +151,7 @@ def log(msg: str) -> None:
     sys.stderr.flush()
 
 
-def run_once(store: Path) -> int:
+def run_once(store: Path, db_path: Path | None = None) -> int:
     deny_bundles, deny_titles = load_deny(store / "deny.txt")
     sample = frontmost()
     if sample is None:
@@ -148,13 +161,19 @@ def run_once(store: Path) -> int:
         log(f"denied {sample.get('bundle') or sample.get('name')}")
         return 0
     ev = event_from(sample)
-    append_jsonl(store / "trail.jsonl", ev)
-    print(json.dumps(ev, ensure_ascii=False))
+    database = Store(db_path or store / "whole.db")
+    try:
+        persist_event(store / "trail.jsonl", database, ev)
+        sanitized, _ = redact_event(ev)
+        print(json.dumps(sanitized, ensure_ascii=False))
+    finally:
+        database.close()
     return 0
 
 
-def run_loop(store: Path, interval: float) -> int:
+def run_loop(store: Path, interval: float, db_path: Path | None = None) -> int:
     trail = store / "trail.jsonl"
+    database = Store(db_path or store / "whole.db")
     last: tuple[str, str] | None = None
     misses = 0
     log(f"frontmost collector store={store} interval={interval}s (no screen, no OCR)")
@@ -174,7 +193,7 @@ def run_loop(store: Path, interval: float) -> int:
             continue
         k = key_of(sample)
         if k != last:
-            append_jsonl(trail, event_from(sample))
+            persist_event(trail, database, event_from(sample))
             last = k
         time.sleep(interval)
 
@@ -183,12 +202,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Whole frontmost collector")
     parser.add_argument("--store", default=str(DEFAULT_STORE))
     parser.add_argument("--interval", type=float, default=8.0)
+    parser.add_argument("--db")
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     store = Path(os.path.expanduser(args.store))
+    db_path = Path(os.path.expanduser(args.db)) if args.db else None
     if args.once:
-        return run_once(store)
-    return run_loop(store, max(2.0, args.interval))
+        return run_once(store, db_path)
+    return run_loop(store, max(2.0, args.interval), db_path)
 
 
 if __name__ == "__main__":

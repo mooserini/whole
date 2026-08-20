@@ -21,7 +21,25 @@ cd ~/Developer/whole
 ./uninstall-macos.sh
 ```
 
-Writes `~/.hermes/whole/trail.jsonl` only when the focused app/title pair changes. Deny list: `~/.hermes/whole/deny.txt`.
+Writes only when the focused app/title pair changes. Every observation passes
+through credential/PII redaction before durable storage:
+
+- `~/.hermes/whole/whole.db` — SQLite shadow store (WAL, FTS5, provenance)
+- `~/.hermes/whole/trail.jsonl` — sanitized recovery/import journal
+- `~/.hermes/whole/deny.txt` — optional bundle/title deny rules
+
+Existing historical JSONL is never rewritten. Import is idempotent:
+
+```bash
+make shadow
+make report
+make test
+```
+
+Segments are deterministic projections of events. Gaps up to 30 minutes are
+counted as an active-time lower bound; longer gaps are `unknown`, never silently
+called active or idle. Short same-app title→null→title flickers are excluded
+from segments while the underlying observations remain available as receipts.
 
 ## Clerk
 
