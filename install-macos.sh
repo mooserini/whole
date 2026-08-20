@@ -1,5 +1,5 @@
 #!/bin/bash
-# Load WHOLE frontmost collector as a user LaunchAgent.
+# Load Whole frontmost collector as a user LaunchAgent.
 # Run from Terminal, not the gateway. Do not start this from README.
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"

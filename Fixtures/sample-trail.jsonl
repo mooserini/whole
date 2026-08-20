@@ -3,8 +3,8 @@
 {"ts":"2026-08-19T17:20:00-04:00","source":"frontmost","app":"com.apple.Notes","title":"Moosenberg Spine","detail":null,"session_id":null,"path":null}
 {"ts":"2026-08-19T17:27:00-04:00","source":"git","app":null,"title":"init whole store schema","detail":"A1 workstream, no OCR","session_id":null,"path":"/Users/thomaskenny/.hermes/whole"}
 {"ts":"2026-08-19T17:32:00-04:00","source":"frontmost","app":"com.ollama.ollama","title":"Ollama — no local tags","detail":"qwen3.5:27b-mlx remembered, weights gone","session_id":null,"path":null}
-{"ts":"2026-08-19T17:40:00-04:00","source":"hermes","app":"ai.nousresearch.hermes","title":"Named the product WHOLE","detail":"dense instruct clerk, not hybrid MoE","session_id":"20260819_whole","path":null}
+{"ts":"2026-08-19T17:40:00-04:00","source":"hermes","app":"ai.nousresearch.hermes","title":"Named the product Whole","detail":"dense instruct clerk, not hybrid MoE","session_id":"20260819_whole","path":null}
 {"ts":"2026-08-19T17:48:00-04:00","source":"frontmost","app":"com.apple.dt.Xcode","title":"Xcode-beta 27.0 first launch","detail":"still in Downloads at the time","session_id":null,"path":null}
-{"ts":"2026-08-19T17:55:00-04:00","source":"git","app":null,"title":"FoundationModels probe WHOLE-OK","detail":"SystemLanguageModel.default available","session_id":null,"path":"/tmp/fm_avail.swift"}
+{"ts":"2026-08-19T17:55:00-04:00","source":"git","app":null,"title":"FoundationModels probe Whole-OK","detail":"SystemLanguageModel.default available","session_id":null,"path":"/tmp/fm_avail.swift"}
 {"ts":"2026-08-19T18:05:00-04:00","source":"frontmost","app":"com.apple.finder","title":"Moved Xcode-beta to Applications","detail":"xcode-select still CommandLineTools","session_id":null,"path":"/Applications/Xcode-beta.app"}
 {"ts":"2026-08-19T18:12:00-04:00","source":"hermes","app":"ai.nousresearch.hermes","title":"Build the AFM clerk","detail":"Icon Composer later; product not a husk","session_id":"20260819_whole","path":null}

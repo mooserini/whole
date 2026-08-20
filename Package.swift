@@ -12,7 +12,13 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "whole-clerk",
-            path: "Sources/whole-clerk"
+            path: "Sources/whole-clerk",
+            swiftSettings: [.unsafeFlags(["-parse-as-library"])]
+        ),
+        .testTarget(
+            name: "WholeClerkTests",
+            dependencies: ["whole-clerk"],
+            path: "Tests/WholeClerkTests"
         )
     ]
 )

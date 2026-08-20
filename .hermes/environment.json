@@ -1,7 +1,7 @@
 {
   "version": 1,
   "recipe": {
-    "name": "WHOLE clerk CLI",
+    "name": "Whole clerk CLI",
     "kind": "make",
     "bootstrap": [],
     "build": [

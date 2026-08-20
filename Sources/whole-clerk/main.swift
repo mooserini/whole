@@ -24,6 +24,7 @@ struct WholeClerk {
         var trailURL = Trail.defaultPath
         var asJSON = false
         var asMarkdown = true
+        let provider = try ProviderConfiguration(arguments: args)
         var i = 0
         while i < args.count {
             switch args[i] {
@@ -36,6 +37,9 @@ struct WholeClerk {
                 asMarkdown = false
             case "--markdown":
                 asMarkdown = true
+            case "--provider", "--base-url", "--model":
+                i += 1
+                guard i < args.count else { throw ClerkError.usage }
             default:
                 throw ClerkError.usage
             }
@@ -51,23 +55,13 @@ struct WholeClerk {
         let slice = Trail.slice(all)
         let truncated = slice.count != all.count
 
-        let model = SystemLanguageModel.default
-        switch model.availability {
-        case .available:
-            break
-        case .unavailable(let reason):
-            throw ClerkError.modelUnavailable(String(describing: reason))
-        }
-
         let instructions = """
-        You are WHOLE's clerk. Summarize only the workstream events you are given.
+        You are Whole's clerk. Summarize only the workstream events you are given.
         Do not invent apps, titles, or work that is not in the events.
         Do not moralize. Do not use a thinking monologue.
         Headline: one sentence. Happened: observed facts. Open: unfinished threads only.
+        Return a JSON object with exactly these fields: headline (string), happened (string array), open (string array), apps (string array).
         """
-
-        let session = LanguageModelSession(instructions: instructions)
-        session.prewarm()
 
         let prompt = """
         Turn these \(slice.count) workstream events into a standup.
@@ -77,22 +71,39 @@ struct WholeClerk {
         """
 
         let generated: Standup
-        do {
-            let response = try await session.respond(
-                to: prompt,
-                generating: Standup.self,
-                includeSchemaInPrompt: true,
-                options: GenerationOptions(temperature: 0.2)
+        switch provider.kind {
+        case .apple:
+            let model = SystemLanguageModel.default
+            switch model.availability {
+            case .available:
+                break
+            case .unavailable(let reason):
+                throw ClerkError.modelUnavailable(String(describing: reason))
+            }
+            let session = LanguageModelSession(instructions: instructions)
+            session.prewarm()
+            do {
+                let response = try await session.respond(
+                    to: prompt,
+                    generating: Standup.self,
+                    includeSchemaInPrompt: true,
+                    options: GenerationOptions(temperature: 0.2)
+                )
+                generated = response.content
+            } catch {
+                throw ClerkError.generation(error)
+            }
+        case .openAICompatible:
+            generated = try await OpenAICompatibleClerk(configuration: provider).generate(
+                instructions: instructions,
+                prompt: prompt
             )
-            generated = response.content
-        } catch {
-            throw ClerkError.generation(error)
         }
 
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let document = StandupDocument(
-            clerk: "apple-foundation-models",
+            clerk: provider.identifier,
             generated_at: iso.string(from: Date()),
             event_count: slice.count,
             truncated: truncated,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WHOLE frontmost collector.
+"""Whole frontmost collector.
 
 Polls the focused app + window title. Appends a JSONL event only when
 the pair changes. No screenshots, no OCR, no clipboard.
@@ -180,7 +180,7 @@ def run_loop(store: Path, interval: float) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="WHOLE frontmost collector")
+    parser = argparse.ArgumentParser(description="Whole frontmost collector")
     parser.add_argument("--store", default=str(DEFAULT_STORE))
     parser.add_argument("--interval", type=float, default=8.0)
     parser.add_argument("--once", action="store_true")

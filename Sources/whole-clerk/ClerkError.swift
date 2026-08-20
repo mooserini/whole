@@ -7,11 +7,14 @@ enum ClerkError: Error, CustomStringConvertible {
     case badEvent(line: Int, underlying: Error)
     case modelUnavailable(String)
     case generation(Error)
+    case invalidProviderResponse(String)
+    case providerRequest(String)
+    case missingCredential(String)
 
     var description: String {
         switch self {
         case .usage:
-            return "usage: whole-clerk [--trail PATH] [--json] [--markdown]"
+            return "usage: whole-clerk [--trail PATH] [--json|--markdown] [--provider apple|ollama|openrouter|openai-compatible] [--model ID] [--base-url URL]"
         case .missingTrail(let url):
             return "no trail at \(url.path)"
         case .emptyTrail:
@@ -22,15 +25,21 @@ enum ClerkError: Error, CustomStringConvertible {
             return "Apple on-device model unavailable: \(reason)"
         case .generation(let error):
             return "generation failed: \(error)"
+        case .invalidProviderResponse(let reason):
+            return "provider response was invalid: \(reason)"
+        case .providerRequest(let reason):
+            return "provider request failed: \(reason)"
+        case .missingCredential(let name):
+            return "missing provider credential: set \(name)"
         }
     }
 
     var exitCode: Int32 {
         switch self {
-        case .usage: return 64
+        case .usage, .missingCredential: return 64
         case .missingTrail, .emptyTrail, .badEvent: return 66
         case .modelUnavailable: return 69
-        case .generation: return 70
+        case .generation, .invalidProviderResponse, .providerRequest: return 70
         }
     }
 }
