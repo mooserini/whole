@@ -74,6 +74,38 @@ Ollama, OpenRouter's free router, or any OpenAI-compatible endpoint:
 free catalog for the request and then routes among eligible models; it is not a
 promise that the most complex request receives the strongest free model.
 
+## Model Context Protocol (MCP) Server
+
+Whole provides a native, zero-dependency MCP server (`scripts/whole_mcp.py`) supporting both stdio and HTTP/SSE transports.
+
+### Local Stdio MCP (Hermes, Claude Code, Cursor)
+
+```bash
+cd ~/Developer/whole
+make mcp
+# or directly:
+/usr/bin/python3 scripts/whole_mcp.py --stdio
+```
+
+### Tailnet / Remote HTTP-SSE Mode
+
+Pieces OS was trapped on `127.0.0.1:39300`. Whole binds cleanly to Tailscale interfaces without port collisions:
+
+```bash
+cd ~/Developer/whole
+make mcp-sse
+# or custom host/port:
+/usr/bin/python3 scripts/whole_mcp.py --sse --host 0.0.0.0 --port 39400
+```
+
+### Tools Exposed to Agents
+
+1. **`whole_status`** — Integrity check, active time lower bound, event count, and redactions breakdown.
+2. **`whole_search`** — FTS5 search across past window titles and app context with optional `since_hours` limit.
+3. **`whole_timeline`** — Active app segments and durations over a lookback window.
+4. **`whole_recent_events`** — Chronological stream of recent sanitized observations.
+5. **`whole_standup`** — Invokes Apple Foundation Models (or configured provider) to synthesize an on-demand workstream standup.
+
 ## Laws
 
-No Discord. No tailnet advertise. No fourth todo. No Pieces MCP. No 20GB debate engine. No Screen Recording for v1.
+No Discord. No Pieces port overlap (39300). No fourth todo. No 20GB debate engine. No Screen Recording for v1.

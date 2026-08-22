@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -463,14 +463,59 @@ class Store:
     def rows(self, sql: str, params: Tuple[Any, ...] = ()) -> List[Tuple[Any, ...]]:
         return [tuple(row) for row in self.conn.execute(sql, params).fetchall()]
 
-    def search(self, query: str) -> List[Dict[str, Any]]:
-        rows = self.conn.execute(
-            """SELECT e.event_id,e.observed_at,e.app,e.title,e.detail,e.path
+    def search(self, query: str, limit: int = 20, since_hours: Optional[int] = None) -> List[Dict[str, Any]]:
+        params: List[Any] = [query]
+        sql = """SELECT e.event_id,e.observed_at,e.app,e.title,e.detail,e.path
                FROM events_fts f JOIN events e ON e.event_id=f.event_id
-               WHERE events_fts MATCH ? ORDER BY e.observed_at""",
-            (query,),
-        ).fetchall()
+               WHERE events_fts MATCH ?"""
+        if since_hours is not None:
+            cutoff = int((datetime.now(timezone.utc) - timedelta(hours=since_hours)).timestamp())
+            sql += " AND e.ts_utc >= ?"
+            params.append(cutoff)
+        sql += " ORDER BY e.ts_utc DESC, e.event_id DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        rows = self.conn.execute(sql, tuple(params)).fetchall()
         keys = ("event_id", "observed_at", "app", "title", "detail", "path")
+        return [dict(zip(keys, row)) for row in rows]
+
+    def timeline(self, limit: int = 50, since_hours: Optional[int] = None, app: Optional[str] = None) -> List[Dict[str, Any]]:
+        params: List[Any] = []
+        sql = """SELECT segment_id, event_id, start_at, end_at, duration_seconds, state, app, title
+                 FROM segments WHERE 1=1"""
+        if since_hours is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
+            sql += " AND start_at >= ?"
+            params.append(cutoff)
+        if app is not None:
+            sql += " AND app = ?"
+            params.append(app)
+        sql += " ORDER BY start_at DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        rows = self.conn.execute(sql, tuple(params)).fetchall()
+        keys = ("segment_id", "event_id", "start_at", "end_at", "duration_seconds", "state", "app", "title")
+        return [dict(zip(keys, row)) for row in rows]
+
+    def recent_events(self, limit: int = 25, since_hours: Optional[int] = None, app: Optional[str] = None) -> List[Dict[str, Any]]:
+        params: List[Any] = []
+        sql = """SELECT event_id, observed_at, app, title, detail, path, redaction_count
+                 FROM events WHERE 1=1"""
+        if since_hours is not None:
+            cutoff = int((datetime.now(timezone.utc) - timedelta(hours=since_hours)).timestamp())
+            sql += " AND ts_utc >= ?"
+            params.append(cutoff)
+        if app is not None:
+            sql += " AND app = ?"
+            params.append(app)
+        sql += " ORDER BY ts_utc DESC, event_id DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        rows = self.conn.execute(sql, tuple(params)).fetchall()
+        keys = ("event_id", "observed_at", "app", "title", "detail", "path", "redaction_count")
         return [dict(zip(keys, row)) for row in rows]
 
     def report(self) -> Dict[str, Any]:

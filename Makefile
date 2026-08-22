@@ -1,4 +1,4 @@
-.PHONY: build run json once check test shadow report clean
+.PHONY: build run json once check test shadow report mcp mcp-sse clean
 
 # Xcode 27 beta owns the FoundationModels macros. Do not point this at
 # /Applications/Xcode.app (that's 26.6) and do not flip xcode-select.
@@ -34,6 +34,12 @@ shadow:
 
 report:
 	$(PY) scripts/whole_store.py report
+
+mcp:
+	PYTHONPATH=scripts $(PY) scripts/whole_mcp.py --stdio
+
+mcp-sse:
+	PYTHONPATH=scripts $(PY) scripts/whole_mcp.py --sse --host 0.0.0.0 --port 39400
 
 clean:
 	rm -rf .build
