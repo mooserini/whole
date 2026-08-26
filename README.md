@@ -19,6 +19,7 @@ cd ~/Developer/whole
 /usr/bin/python3 scripts/frontmost.py --once
 ./install-macos.sh          # LaunchAgent — Accessibility, not Screen Recording
 ./uninstall-macos.sh
+make health                 # Read-only plist/launchd/process/trail/Accessibility check
 ```
 
 Writes only when the focused app/title pair changes. Every observation passes
@@ -101,10 +102,13 @@ make mcp-sse
 ### Tools Exposed to Agents
 
 1. **`whole_status`** — Integrity check, active time lower bound, event count, and redactions breakdown.
-2. **`whole_search`** — FTS5 search across past window titles and app context with optional `since_hours` limit.
-3. **`whole_timeline`** — Active app segments and durations over a lookback window.
-4. **`whole_recent_events`** — Chronological stream of recent sanitized observations.
-5. **`whole_standup`** — Invokes Apple Foundation Models (or configured provider) to synthesize an on-demand workstream standup.
+2. **`whole_health`** — Read-only runtime check for the plist, launchd registration, collector process, trail freshness, and Accessibility access.
+3. **`whole_search`** — FTS5 search across past window titles and app context with optional `since_hours` limit.
+4. **`whole_timeline`** — Active app segments and durations over a lookback window.
+5. **`whole_recent_events`** — Chronological stream of recent sanitized observations.
+6. **`whole_standup`** — Invokes Apple Foundation Models (or configured provider) to synthesize an on-demand workstream standup.
+
+The HTTP `/health` endpoint uses the same runtime check. `/api/status` remains the archive/store report used by the dashboard.
 
 ## Laws
 

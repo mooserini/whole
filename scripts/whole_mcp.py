@@ -27,6 +27,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from whole_store import Store
+from whole_health import health_report
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "whole-mcp"
@@ -677,11 +678,12 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 
 
 class WholeMCPHandler:
-    def __init__(self, db_path: Path, trail_path: Path):
+    def __init__(self, db_path: Path, trail_path: Path, health_checker=None):
         self.db_path = Path(db_path).expanduser()
         self.trail_path = Path(trail_path).expanduser()
         self.repo_dir = _SCRIPTS_DIR.parent
         self.clerk_bin = self.repo_dir / ".build/debug/whole-clerk"
+        self.health_checker = health_checker or health_report
 
     def _get_store(self) -> Store:
         return Store(self.db_path)
@@ -691,6 +693,15 @@ class WholeMCPHandler:
             {
                 "name": "whole_status",
                 "description": "Get current health, total recorded observations, active work time, and redaction counts from Whole's evidence store.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "whole_health",
+                "description": "Run a read-only runtime check for Whole's plist, launchd registration, collector process, trail freshness, and Accessibility access.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {},
@@ -790,8 +801,13 @@ class WholeMCPHandler:
 
     def call_tool(self, name: str, arguments: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], bool]:
         """Execute a tool call and return (content_list, is_error)."""
-        store = self._get_store()
+        store = None
         try:
+            if name == "whole_health":
+                report = self.health_checker()
+                return [{"type": "text", "text": json.dumps(report, ensure_ascii=False, indent=2)}], False
+
+            store = self._get_store()
             if name == "whole_status":
                 report = store.report()
                 return [{"type": "text", "text": json.dumps(report, ensure_ascii=False, indent=2)}], False
@@ -860,7 +876,8 @@ class WholeMCPHandler:
         except Exception as exc:
             return [{"type": "text", "text": f"Internal tool execution error: {exc}"}], True
         finally:
-            store.close()
+            if store is not None:
+                store.close()
 
     def handle_rpc(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process a single JSON-RPC request and return the response dictionary."""
@@ -1005,8 +1022,22 @@ def create_http_server(mcp_handler: WholeMCPHandler, host: str, port: int) -> Th
                 self.wfile.write(_DASHBOARD_HTML.encode("utf-8"))
                 return
 
-            # 2. REST API endpoints for UI & scripts
-            if parsed.path == "/api/status" or parsed.path == "/health" or parsed.path == "/status":
+            # 2. Runtime health endpoint
+            if parsed.path == "/health":
+                report = mcp_handler.health_checker()
+                report["status"] = "ok" if report.get("overall") == "healthy" else report.get("overall", "unknown")
+                report["server"] = SERVER_NAME
+                report["version"] = SERVER_VERSION
+                report["protocolVersion"] = PROTOCOL_VERSION
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(report, ensure_ascii=False).encode("utf-8"))
+                return
+
+            # 3. Store report endpoint for the dashboard
+            if parsed.path == "/api/status" or parsed.path == "/status":
                 store = mcp_handler._get_store()
                 try:
                     report = store.report()

@@ -50,6 +50,7 @@ class WholeMCPHandlerTests(unittest.TestCase):
         tools = self.handler.get_tool_definitions()
         tool_names = [t["name"] for t in tools]
         self.assertIn("whole_status", tool_names)
+        self.assertIn("whole_health", tool_names)
         self.assertIn("whole_search", tool_names)
         self.assertIn("whole_timeline", tool_names)
         self.assertIn("whole_recent_events", tool_names)
@@ -62,6 +63,27 @@ class WholeMCPHandlerTests(unittest.TestCase):
         data = json.loads(content[0]["text"])
         self.assertEqual(data["events"], 3)
         self.assertEqual(data["integrity"], "ok")
+
+    def test_whole_health_tool(self):
+        expected = {"overall": "healthy", "read_only": True, "repair_attempted": False}
+        self.handler.health_checker = lambda: expected
+        content, is_error = self.handler.call_tool("whole_health", {})
+        self.assertFalse(is_error)
+        self.assertEqual(json.loads(content[0]["text"]), expected)
+
+    def test_whole_health_does_not_create_missing_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "missing" / "whole.db"
+            trail = Path(tmp) / "trail.jsonl"
+            handler = WholeMCPHandler(db, trail, health_checker=lambda: {
+                "overall": "offline",
+                "read_only": True,
+                "repair_attempted": False,
+            })
+            content, is_error = handler.call_tool("whole_health", {})
+            self.assertFalse(is_error)
+            self.assertFalse(db.exists())
+            self.assertEqual(json.loads(content[0]["text"])["overall"], "offline")
 
     def test_whole_search_tool(self):
         content, is_error = self.handler.call_tool("whole_search", {"query": "getadongle"})
@@ -173,6 +195,11 @@ class WholeMCPHTTPServerTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_http_health_endpoint(self):
+        self.handler.health_checker = lambda: {
+            "overall": "healthy",
+            "read_only": True,
+            "repair_attempted": False,
+        }
         url = f"http://127.0.0.1:{self.port}/health"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req) as resp:
@@ -180,6 +207,7 @@ class WholeMCPHTTPServerTests(unittest.TestCase):
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(data["status"], "ok")
             self.assertEqual(data["server"], SERVER_NAME)
+            self.assertEqual(data["overall"], "healthy")
 
     def test_http_rpc_endpoint(self):
         url = f"http://127.0.0.1:{self.port}/rpc"

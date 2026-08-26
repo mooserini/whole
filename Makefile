@@ -1,4 +1,4 @@
-.PHONY: build run json once check test shadow report mcp mcp-sse clean
+.PHONY: build run json once check health test shadow report mcp mcp-sse clean
 
 # Xcode 27 beta owns the FoundationModels macros. Do not point this at
 # /Applications/Xcode.app (that's 26.6) and do not flip xcode-select.
@@ -24,6 +24,9 @@ once:
 check:
 	mkdir -p /tmp/whole-verify
 	$(PY) scripts/frontmost.py --once --store /tmp/whole-verify
+
+health:
+	$(PY) scripts/whole_health.py --trail $(HOME)/.hermes/whole/trail.jsonl
 
 test:
 	PYTHONPATH=scripts $(PY) -m unittest discover -s Tests -p 'test_*.py' -v
