@@ -6,7 +6,8 @@ Pieces rented the film. Whole owns it.
 
 - **Store:** `~/.hermes/whole/` (historic trail, not current truth)
 - **Spine stays human:** Apple Notes `Moosenberg Spine` + `USER.md` / `MEMORY.md` + Desktop dual-write
-- **Clerk:** Apple on-device Foundation Models via `whole-clerk`
+- **Clerk:** provider-agnostic standups via `whole-clerk` (OpenRouter free by
+  default, Apple on-device one flag away)
 - **Film:** frontmost app + window title. No screen, no OCR, no clipboard
 - **Build clerk:** `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (27.0). Do not flip `xcode-select`
 - **Monitor:** the menu-bar eye in `WholeMonitor/` — green collecting, yellow
