@@ -13,7 +13,7 @@ struct ProviderConfiguration {
     let apiKey: String?
 
     init(arguments: [String], environment: [String: String] = ProcessInfo.processInfo.environment) throws {
-        var provider = "apple"
+        var provider = "openrouter"
         var baseURLValue: String?
         var modelValue: String?
         var index = 0
@@ -100,8 +100,23 @@ enum OpenAIResponse {
         do {
             return try JSONDecoder().decode(Standup.self, from: Data(content.utf8))
         } catch {
+            // Some free-router models ignore response_format and wrap the JSON
+            // in prose. Salvage the outermost {...} span before giving up.
+            if let salvaged = Self.extractJSONObject(from: content),
+               let standup = try? JSONDecoder().decode(Standup.self, from: Data(salvaged.utf8)) {
+                return standup
+            }
             throw ClerkError.invalidProviderResponse("message content was not a Whole standup: \(error)")
         }
+    }
+
+    /// Returns the substring from the first "{" to the last "}", if both exist
+    /// in order. Used to salvage JSON from models that wrap it in prose.
+    private static func extractJSONObject(from text: String) -> String? {
+        guard let start = text.firstIndex(of: "{"),
+              let end = text.lastIndex(of: "}"),
+              start <= end else { return nil }
+        return String(text[start...end])
     }
 }
 

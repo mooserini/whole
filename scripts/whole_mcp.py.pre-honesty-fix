@@ -160,20 +160,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
       background: var(--border);
       border-color: var(--copper);
     }
-    .provider-select {
-      background: var(--surface-elevated);
-      color: var(--text);
-      border: 1px solid var(--border-light);
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      outline: none;
-    }
-    .provider-select:focus {
-      border-color: var(--copper);
-    }
     button.primary {
       background: var(--copper);
       color: #121314;
@@ -419,17 +405,12 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
         <div class="pulse-dot"></div>
         WHOLE
       </div>
-      <span class="status-tag" id="trailBadge">Live Trail</span>
+      <span class="status-tag">Live Trail</span>
     </div>
     <div class="header-actions">
       <input type="text" id="searchInput" class="search-input" placeholder="Search memory (FTS5)..." onkeyup="handleSearch(event)">
       <button onclick="loadAllData()"><span>⟳</span> Refresh</button>
-      <select id="clerkProvider" class="provider-select" title="Clerk provider" onchange="syncClerkMeta(true)">
-        <option value="apple">Apple on-device</option>
-        <option value="ollama">Ollama</option>
-        <option value="openrouter" selected>OpenRouter (free)</option>
-      </select>
-      <button class="primary" onclick="triggerStandup()" id="clerkBtn"><span>⚡</span> Run Clerk</button>
+      <button class="primary" onclick="triggerStandup()" id="clerkBtn"><span>⚡</span> Run AFM Clerk</button>
     </div>
   </header>
 
@@ -456,12 +437,12 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="card">
         <div class="vital-title">Privacy Boundary</div>
         <div class="vital-value" style="color: var(--green);" id="valRedactions">&mdash;</div>
-        <div class="vital-sub" id="valRedactionsSub">Zero sensitive fields leaked</div>
+        <div class="vital-sub">Zero sensitive fields leaked</div>
       </div>
       <div class="card">
         <div class="vital-title">Collector Daemon</div>
-        <div class="vital-value" id="valCollector" style="color: var(--text-muted);">&mdash;</div>
-        <div class="vital-sub" id="valCollectorSub">com.moosenberg.whole-frontmost</div>
+        <div class="vital-value" style="color: var(--green);">RUNNING</div>
+        <div class="vital-sub">com.moosenberg.whole-frontmost</div>
       </div>
     </div>
 
@@ -553,48 +534,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
       return title.replace(/\\[([A-Z_]+)\\]/g, '<span class="redaction-badge">[$1]</span>');
     }
 
-    function formatAge(seconds) {
-      if (seconds == null || isNaN(seconds)) return "unknown";
-      const s = Math.max(0, Math.floor(seconds));
-      if (s < 60) return `${s}s`;
-      if (s < 3600) return `${Math.floor(s / 60)}m`;
-      if (s < 86400) return `${Math.floor(s / 3600)}h`;
-      return `${Math.floor(s / 86400)}d`;
-    }
-
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, (ch) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[ch]));
-    }
-
-    function renderCollector(c) {
-      const el = document.getElementById("valCollector");
-      const sub = document.getElementById("valCollectorSub");
-      const badge = document.getElementById("trailBadge");
-      if (!el || !c) return;
-      const ageTxt = c.trail_age_seconds != null ? ` · last observation ${formatAge(c.trail_age_seconds)} ago` : "";
-      if (c.state === "running") {
-        el.textContent = "RUNNING";
-        el.style.color = "var(--green)";
-        sub.textContent = `observing${ageTxt}`;
-        if (badge) { badge.textContent = "Live Trail"; badge.style.color = ""; badge.style.borderColor = ""; }
-      } else if (c.state === "idle") {
-        el.textContent = "IDLE";
-        el.style.color = "var(--gold)";
-        sub.textContent = `loaded · quiet${ageTxt} (writes on change)`;
-        if (badge) { badge.textContent = "Quiet Trail"; badge.style.color = "var(--gold)"; badge.style.borderColor = "var(--gold)"; }
-      } else if (c.state === "down") {
-        el.textContent = "DOWN";
-        el.style.color = "var(--red)";
-        sub.textContent = c.trail_age_seconds != null ? `not loaded${ageTxt}` : "not loaded · no observations yet";
-        if (badge) { badge.textContent = "Trail Down"; badge.style.color = "var(--red)"; badge.style.borderColor = "var(--red)"; }
-      } else {
-        el.textContent = "UNKNOWN";
-        el.style.color = "var(--text-muted)";
-        sub.textContent = c.detail || "health check failed";
-        if (badge) { badge.textContent = "Trail Unknown"; }
-      }
-    }
-
     async function loadStatus() {
       try {
         const res = await fetch("/api/status");
@@ -602,19 +541,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
         document.getElementById("valEvents").textContent = (data.events || 0).toLocaleString();
         document.getElementById("valActiveTime").textContent = formatDuration(data.active_seconds_lower_bound || 0);
         document.getElementById("valRedactions").textContent = `${data.redacted_events || 0} Clean`;
-        const residual = data.residual_sensitive_fields || 0;
-        const redSub = document.getElementById("valRedactionsSub");
-        if (residual > 0) {
-          document.getElementById("valRedactions").style.color = "var(--gold)";
-          redSub.textContent = `${residual} field${residual === 1 ? "" : "s"} flagged for review`;
-          redSub.style.color = "var(--gold)";
-        } else {
-          document.getElementById("valRedactions").style.color = "var(--green)";
-          redSub.textContent = "Zero sensitive fields leaked";
-          redSub.style.color = "";
-        }
-
-        renderCollector(data.collector);
 
         // Render Ribbon
         const appSeconds = data.active_seconds_by_app || {};
@@ -669,43 +595,10 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
       }
     }
 
-    const PROVIDER_LABELS = {
-      apple: "Apple Foundation Models",
-      ollama: "Ollama (local)",
-      openrouter: "OpenRouter (free router)",
-    };
-
-    function clerkProvider() {
-      const sel = document.getElementById("clerkProvider");
-      return (sel && sel.value) || "openrouter";
-    }
-
-    function syncClerkMeta(save) {
-      const p = clerkProvider();
-      const meta = document.getElementById("clerkMeta");
-      if (meta) meta.textContent = PROVIDER_LABELS[p] || p;
-      if (save) { try { localStorage.setItem("wholeClerkProvider", p); } catch (e) {} }
-    }
-
-    async function loadStandup(provider) {
-      provider = provider || clerkProvider();
+    async function loadStandup() {
       try {
-        const res = await fetch("/api/standup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider }),
-        });
-        const raw = await res.text();
-        if (!res.ok) {
-          // Honest failure: never leave the panel spinning on "Loading...".
-          document.getElementById("standupHeadline").textContent = "Clerk unavailable";
-          document.getElementById("standupHappened").innerHTML =
-            `<li>${escapeHtml(raw.trim() || "HTTP " + res.status)}</li>`;
-          document.getElementById("standupOpen").innerHTML =
-            `<li>Historical observations below remain searchable</li>`;
-          return;
-        }
-        const data = JSON.parse(raw);
+        const res = await fetch("/api/standup", { method: "POST" });
+        const data = await res.json();
         if (data.standup) {
           document.getElementById("standupHeadline").textContent = data.standup.headline || "Workstream activity summarized.";
           const happenedList = document.getElementById("standupHappened");
@@ -719,21 +612,16 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
         }
       } catch (e) {
         console.error("Failed to load standup:", e);
-        document.getElementById("standupHeadline").textContent = "Clerk unreachable";
-        document.getElementById("standupHappened").innerHTML =
-          `<li>${escapeHtml((e && e.message) || String(e))}</li>`;
       }
     }
 
     async function triggerStandup() {
       const btn = document.getElementById("clerkBtn");
-      const provider = clerkProvider();
-      try { localStorage.setItem("wholeClerkProvider", provider); } catch (e) {}
       btn.disabled = true;
       btn.textContent = "Synthesizing...";
-      await loadStandup(provider);
+      await loadStandup();
       btn.disabled = false;
-      btn.innerHTML = "<span>⚡</span> Run Clerk";
+      btn.innerHTML = "<span>⚡</span> Run AFM Clerk";
     }
 
     async function handleSearch(e) {
@@ -779,12 +667,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     }
 
     // Initial hydration
-    try {
-      const saved = localStorage.getItem("wholeClerkProvider");
-      if (saved) document.getElementById("clerkProvider").value = saved;
-      else document.getElementById("clerkProvider").value = "openrouter";
-    } catch (e) {}
-    syncClerkMeta(false);
     loadAllData();
     loadStandup();
     // Auto-refresh stream every 8s
@@ -793,37 +675,6 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
 </body>
 </html>
 """
-
-
-def _summarize_collector(health):
-    """Honest three-state collector summary for the dashboard.
-
-    The collector writes only when the frontmost app/title changes, so a
-    loaded-but-quiet collector is IDLE, not DOWN. Full diagnostics live in
-    whole_health.py; this is the cheap subset safe to poll every few seconds.
-    """
-    health = health or {}
-    trail = health.get("trail") or {}
-    launchd = health.get("launchd") or {}
-    process = health.get("process") or {}
-    alive = bool(process.get("alive"))
-    registered = bool(launchd.get("registered"))
-    fresh = bool(trail.get("fresh"))
-    age = trail.get("age_seconds")
-    if alive and fresh:
-        state = "running"
-    elif alive or registered:
-        state = "idle"
-    else:
-        state = "down"
-    return {
-        "state": state,
-        "process_alive": alive,
-        "launchd_registered": registered,
-        "trail_fresh": fresh,
-        "trail_age_seconds": age,
-        "label": health.get("label", "com.moosenberg.whole-frontmost"),
-    }
 
 
 class WholeMCPHandler:
@@ -935,8 +786,8 @@ class WholeMCPHandler:
                     "properties": {
                         "provider": {
                             "type": "string",
-                            "description": "Clerk provider: 'openrouter' (default), 'apple', 'ollama', or 'openai-compatible'",
-                            "default": "openrouter",
+                            "description": "Clerk provider: 'apple' (default), 'ollama', 'openrouter', or 'openai-compatible'",
+                            "default": "apple",
                         },
                         "model": {
                             "type": "string",
@@ -991,7 +842,7 @@ class WholeMCPHandler:
                 return [{"type": "text", "text": json.dumps({"count": len(events), "events": events}, ensure_ascii=False, indent=2)}], False
 
             elif name == "whole_standup":
-                provider = arguments.get("provider", "openrouter")
+                provider = arguments.get("provider", "apple")
                 model = arguments.get("model")
                 if not self.trail_path.exists():
                     return [{"type": "text", "text": f"Error: trail journal not found at {self.trail_path}"}], True
@@ -1001,7 +852,7 @@ class WholeMCPHandler:
                     if model:
                         cmd.extend(["--model", model])
                     env = dict(os.environ)
-                    env["DEVELOPER_DIR"] = "/Applications/Xcode.app/Contents/Developer"
+                    env["DEVELOPER_DIR"] = "/Applications/Xcode-beta.app/Contents/Developer"
                     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30, env=env)
                     if proc.returncode == 0:
                         return [{"type": "text", "text": proc.stdout.strip()}], False
@@ -1194,11 +1045,6 @@ def create_http_server(mcp_handler: WholeMCPHandler, host: str, port: int) -> Th
                     report["server"] = SERVER_NAME
                     report["version"] = SERVER_VERSION
                     report["protocolVersion"] = PROTOCOL_VERSION
-                    try:
-                        health = mcp_handler.health_checker(trail_path=mcp_handler.trail_path)
-                        report["collector"] = _summarize_collector(health)
-                    except Exception as exc:
-                        report["collector"] = {"state": "unknown", "detail": str(exc)}
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Access-Control-Allow-Origin", "*")
@@ -1301,19 +1147,7 @@ def create_http_server(mcp_handler: WholeMCPHandler, host: str, port: int) -> Th
 
             # API standup endpoint
             if parsed.path == "/api/standup":
-                try:
-                    standup_req = json.loads(body) if body.strip() else {}
-                except Exception:
-                    standup_req = {}
-                if not isinstance(standup_req, dict):
-                    standup_req = {}
-                provider = standup_req.get("provider") or "openrouter"
-                if provider not in ("apple", "ollama", "openrouter", "openai-compatible"):
-                    provider = "openrouter"
-                standup_args = {"provider": provider}
-                if standup_req.get("model"):
-                    standup_args["model"] = standup_req["model"]
-                content, is_error = mcp_handler.call_tool("whole_standup", standup_args)
+                content, is_error = mcp_handler.call_tool("whole_standup", {})
                 self.send_response(200 if not is_error else 500)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Access-Control-Allow-Origin", "*")

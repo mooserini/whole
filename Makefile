@@ -1,8 +1,8 @@
 .PHONY: build run json once check health test shadow report mcp mcp-sse clean
 
-# Xcode 27 beta owns the FoundationModels macros. Do not point this at
-# /Applications/Xcode.app (that's 26.6) and do not flip xcode-select.
-export DEVELOPER_DIR := /Applications/Xcode-beta.app/Contents/Developer
+# Xcode 27 (shipped, /Applications/Xcode.app 27.0 27A266a) owns the
+# FoundationModels macros. Do not flip xcode-select; DEVELOPER_DIR suffices.
+export DEVELOPER_DIR := /Applications/Xcode.app/Contents/Developer
 
 BIN := .build/debug/whole-clerk
 FIXTURE := Fixtures/sample-trail.jsonl

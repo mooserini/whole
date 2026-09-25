@@ -8,7 +8,7 @@ Pieces rented the film. Whole owns it.
 - **Spine stays human:** Apple Notes `Moosenberg Spine` + `USER.md` / `MEMORY.md` + Desktop dual-write
 - **Clerk:** Apple on-device Foundation Models via `whole-clerk`
 - **Film:** frontmost app + window title. No screen, no OCR, no clipboard
-- **Build clerk:** `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer` (27.0). Do not flip `xcode-select`
+- **Build clerk:** `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (27.0). Do not flip `xcode-select`
 
 ## Collector
 
@@ -52,8 +52,10 @@ make run
 .build/debug/whole-clerk --trail ~/.hermes/whole/trail.jsonl --json
 ```
 
-Apple Foundation Models is the default, not a lock-in. The same clerk can use
-Ollama, OpenRouter's free router, or any OpenAI-compatible endpoint:
+OpenRouter's free router is the default, not a fallback. Apple on-device stays
+available for offline use, alongside Ollama or any OpenAI-compatible endpoint
+(Apple's macOS 27 guardrails have gotten twitchy about ordinary workstream
+history — observed refusal: "May contain unsafe content"):
 
 ```bash
 # Apple Foundation Models — fully on-device

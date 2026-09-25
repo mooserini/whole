@@ -117,7 +117,8 @@ class WholeMCPHandlerTests(unittest.TestCase):
     def test_whole_standup_fallback_with_trail(self):
         # Create trail file
         self.trail.write_text(json.dumps({"ts": "2026-08-21T10:00:00-04:00", "source": "frontmost", "app": "com.apple.Terminal", "title": "Building"}) + "\n")
-        content, is_error = self.handler.call_tool("whole_standup", {})
+        # Keyless apple path: default is openrouter (needs a key), so opt in explicitly.
+        content, is_error = self.handler.call_tool("whole_standup", {"provider": "apple"})
         self.assertFalse(is_error)
         data = json.loads(content[0]["text"])
         self.assertTrue("clerk" in data or "standup" in data)
@@ -273,7 +274,7 @@ class WholeMCPHTTPServerTests(unittest.TestCase):
     def test_http_api_standup(self):
         self.trail.write_text(json.dumps({"ts": "2026-08-21T10:00:00-04:00", "source": "frontmost", "app": "com.apple.Terminal", "title": "Building"}) + "\n")
         url = f"http://127.0.0.1:{self.port}/api/standup"
-        req = urllib.request.Request(url, data=b"{}", headers={"Content-Type": "application/json"})
+        req = urllib.request.Request(url, data=b'{"provider": "apple"}', headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req) as resp:
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode("utf-8"))

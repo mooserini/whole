@@ -2,8 +2,22 @@ import XCTest
 @testable import whole_clerk
 
 final class ProviderConfigurationTests: XCTestCase {
-    func testAppleIsTheDefaultProvider() throws {
-        let configuration = try ProviderConfiguration(arguments: [], environment: [:])
+    func testOpenRouterIsTheDefaultProvider() throws {
+        let configuration = try ProviderConfiguration(
+            arguments: [],
+            environment: ["OPENROUTER_API_KEY": "router-key"]
+        )
+
+        XCTAssertEqual(configuration.kind, .openAICompatible)
+        XCTAssertEqual(configuration.identifier, "openrouter")
+        XCTAssertEqual(configuration.model, "openrouter/free")
+    }
+
+    func testAppleRemainsAvailableAsAnExplicitOptIn() throws {
+        let configuration = try ProviderConfiguration(
+            arguments: ["--provider", "apple"],
+            environment: [:]
+        )
 
         XCTAssertEqual(configuration.kind, .apple)
         XCTAssertEqual(configuration.identifier, "apple-foundation-models")
