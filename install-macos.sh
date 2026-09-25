@@ -8,8 +8,8 @@ PLIST="$HOME/Library/LaunchAgents/${LABEL}.plist"
 GUI="gui/$(id -u)"
 STORE="${WHOLE_STORE:-$HOME/.hermes/whole}"
 SCRIPT="$DIR/scripts/frontmost.py"
-# /usr/bin/python3 is an Xcode stub. With Xcode.app 26.6 unlicensed it
-# exits 69 from launchd. Pin the Command Line Tools interpreter.
+# /usr/bin/python3 is an Xcode stub that misbehaves from launchd.
+# Pin the Command Line Tools interpreter (Xcode.app stays out of it).
 PY="/Library/Developer/CommandLineTools/usr/bin/python3"
 if [[ ! -x "$PY" ]]; then
   echo "missing $PY — install CLT 27, do not point this at Xcode.app" >&2
