@@ -83,6 +83,15 @@ No Discord. No port 39300 overlap. No fourth todo. No 20GB debate engine. No Scr
   ("May contain unsafe content"); the beta Tom built against was looser.
   Nineteen free routers beat one nervous bouncer.
 
+## 2026-09-25 — WholeMonitor folds into Whole
+- The menu-bar eye is no longer a side project: `WholeMonitor/` lives in this
+  repo (it should have been here 20 days ago). Contract-verified models,
+  always-eye states (green collecting / yellow watching / red offline),
+  live "Last event" pulse, frosted house glass, More → App Behavior with
+  monitor + collector login switches.
+- Designed by Little Bird, contract layer by Ara. `Build/` ignored.
+- Not yet: Login Items persistence, signing beyond ad-hoc.
+
 ## 2026-09-25 — monitoring gap: collector was dark Sep 10 → Sep 24
 - Whole sat offline ~Sep 10 until ~8h before this session and nothing told
   Tom. The dashboard IS the monitor, but a dead server serves no dashboard —

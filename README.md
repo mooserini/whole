@@ -9,6 +9,20 @@ Pieces rented the film. Whole owns it.
 - **Clerk:** Apple on-device Foundation Models via `whole-clerk`
 - **Film:** frontmost app + window title. No screen, no OCR, no clipboard
 - **Build clerk:** `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (27.0). Do not flip `xcode-select`
+- **Monitor:** the menu-bar eye in `WholeMonitor/` — green collecting, yellow
+  watching, red offline. The pixel Whole should have had 20 days ago.
+
+## Monitor
+
+```bash
+cd ~/Developer/whole/WholeMonitor
+make contract-test   # must print CONTRACT OK against the live server
+make build && make run
+```
+
+Frosted `.popover` glass (house theme, same as Config Guardian). More →
+App Behavior holds the two login switches (monitor + collector). Spec by
+Little Bird, contract layer rebuilt by Ara — see `WholeMonitor/README.md`.
 
 ## Collector
 
